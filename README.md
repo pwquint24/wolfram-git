@@ -15,6 +15,7 @@ A collection of git utilities for working with Wolfram Language notebooks (`.nb`
 2. **Pre-Commit Companion Formats Generator (`wolfram-git-pre-commit` & `wolfram-git-export-formats.wls`)**
    - Automatically runs before each commit (`git commit`).
    - Inspects all staged `.nb` files and generates companion formats (such as `.md` Markdown).
+   - **Automatic license check**: Checks license availability via `wolframscript -code '1+1'`. If licenses are exhausted (e.g. by a background LSP server), it automatically triggers `wolfram-git-kill-lsp.sh` to free a license before proceeding.
    - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.
    - **Zero external image folders**: Images in text/input cells are embedded inline as data URIs (`data:image/png;base64,...`) via `GeneratedAssetLocation -> None`, keeping git repositories free of detached asset directories.
    - Automatically stages the generated `.md` files into the commit (`git add`).
@@ -69,6 +70,7 @@ This script automatically:
 3. Sets `git config filter.wolfram-nb.smudge cat`.
 4. Appends `*.nb filter=wolfram-nb` to `.gitattributes`.
 5. Records the path to `wolfram-git-export-formats.wls` in `git config wolfram.exporterPath`.
+6. Records the path to `wolfram-git-kill-lsp.sh` in `git config wolfram.killLspPath`.
 
 ---
 

@@ -11,6 +11,9 @@ mkdir -p "$TEST_SANDBOX"
 
 echo "=== Running Wolfram Git Utilities Test Suite ==="
 
+# Ensure license is available before running tests
+"$ROOT_DIR/scripts/wolfram-git-kill-lsp.sh" >/dev/null 2>&1 || true
+
 # 1. Test clean filter directly
 echo "[1/4] Testing wolfram-git-filter.wls on raw notebook string..."
 FILTER_OUTPUT=$(echo 'Notebook[{Cell["Hello Test","Text",CellChangeTimes->{3.8e9},ExpressionUUID->"test-uuid-999"]}]' | "$ROOT_DIR/scripts/wolfram-git-filter.wls")
@@ -102,7 +105,7 @@ fi
 echo "PASS: Git filter and pre-commit hook integrated seamlessly."
 
 # 4. Test notebook deletion workflow
-echo "[4/4] Testing notebook deletion workflow..."
+echo "[4/5] Testing notebook deletion workflow..."
 git rm -q notebook1.nb
 git commit -m "Remove notebook1" -q
 if git ls-files | grep -q "notebook1.md"; then
@@ -110,6 +113,45 @@ if git ls-files | grep -q "notebook1.md"; then
   exit 1
 fi
 echo "PASS: Notebook deletion removes companion markdown."
+
+# 5. Test license recovery mechanism
+echo "[5/5] Testing license exhaustion detection & kill-lsp trigger..."
+TRIGGER_LOG="$TEST_SANDBOX/kill_lsp_called.txt"
+MOCK_KILL="$TEST_SANDBOX/mock-kill-lsp.sh"
+cat << EOF > "$MOCK_KILL"
+#!/usr/bin/env bash
+echo "kill-lsp-triggered" > "$TRIGGER_LOG"
+EOF
+chmod +x "$MOCK_KILL"
+
+REAL_WOLFRAMSCRIPT="$(which wolframscript)"
+MOCK_DIR="$TEST_SANDBOX/bin"
+mkdir -p "$MOCK_DIR"
+MOCK_WS="$MOCK_DIR/wolframscript"
+FLAG_FILE="$TEST_SANDBOX/ws_called"
+cat << EOF > "$MOCK_WS"
+#!/usr/bin/env bash
+if [ ! -f "$FLAG_FILE" ]; then
+  touch "$FLAG_FILE"
+  echo "Simulated license failure" >&2
+  exit 255
+else
+  exec "$REAL_WOLFRAMSCRIPT" "\$@"
+fi
+EOF
+chmod +x "$MOCK_WS"
+
+cd "$TEST_SANDBOX"
+git config wolfram.killLspPath "$MOCK_KILL"
+echo 'Notebook[{Cell["License Test", "Title"]}]' > lic_test.nb
+git add lic_test.nb
+PATH="$MOCK_DIR:$PATH" git commit -m "License recovery commit" -q
+
+if [ ! -f "$TRIGGER_LOG" ]; then
+  echo "FAIL: kill-lsp was not triggered when wolframscript failed!"
+  exit 1
+fi
+echo "PASS: License failure correctly triggered kill-lsp and recovered."
 
 # Clean up sandbox
 rm -rf "$TEST_SANDBOX"

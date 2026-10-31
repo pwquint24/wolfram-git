@@ -20,6 +20,7 @@ echo "Installing pre-commit hook..."
 cp "$SCRIPT_DIR/wolfram-git-pre-commit" "$HOOKS_DIR/pre-commit"
 chmod +x "$HOOKS_DIR/pre-commit"
 git config wolfram.exporterPath "$SCRIPT_DIR/wolfram-git-export-formats.wls"
+git config wolfram.killLspPath "$SCRIPT_DIR/wolfram-git-kill-lsp.sh"
 
 # 2. Configure git clean filter for .nb files
 echo "Configuring git filter 'wolfram-nb'..."

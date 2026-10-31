@@ -47,10 +47,11 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 - **Purpose:** Automatically generates and stages companion `.md` files whenever `.nb` files are staged for commit.
 - **Workflow:**
   - Finds all staged `.nb` files (`git diff --cached --name-only --diff-filter=ACM`).
+  - **License Availability Check:** Runs a trivial invocation (`wolframscript -code '1+1'`). If no license is available (e.g., license processes exhausted by background LSP server), it automatically runs `wolfram-git-kill-lsp.sh` to release the license before retrying and continuing.
   - Calls `wolfram-git-export-formats.wls` for each staged notebook.
   - Stages the resulting `.md` files into the commit (`git add`).
   - Handles deletions (`git diff --cached --diff-filter=D`): if a `.nb` file is deleted from git, the corresponding companion `.md` file is automatically staged for removal.
-  - Path lookup: reads `git config --get wolfram.exporterPath`, checks `PATH`, or falls back to adjacent script location.
+  - Path lookup: reads `git config --get wolfram.exporterPath` and `git config --get wolfram.killLspPath`, checks `PATH`, or falls back to adjacent script locations.
 
 ---
 
@@ -65,7 +66,8 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
   2. Sets `git config filter.wolfram-nb.clean` to the absolute path of `wolfram-git-filter.wls`.
   3. Sets `git config filter.wolfram-nb.smudge cat`.
   4. Sets `git config wolfram.exporterPath` to the absolute path of `wolfram-git-export-formats.wls`.
-  5. Adds `*.nb filter=wolfram-nb` to `.gitattributes`.
+  5. Sets `git config wolfram.killLspPath` to the absolute path of `wolfram-git-kill-lsp.sh`.
+  6. Adds `*.nb filter=wolfram-nb` to `.gitattributes`.
 
 ---
 
@@ -76,3 +78,4 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
   2. `wolfram-git-export-formats.wls` output cell removal and markdown formatting.
   3. End-to-end Git integration via `wolfram-git-install-hooks.sh` and `wolfram-git-pre-commit`.
   4. Automatic staging of `.md` files on commit and removal on deletion.
+  5. License exhaustion detection, automatic LSP termination trigger, and recovery.

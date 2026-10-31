@@ -26,6 +26,48 @@ if [ ! -x "$EXPORTER" ]; then
   chmod +x "$EXPORTER" 2>/dev/null || true
 fi
 
+# Locate kill-lsp script
+CONFIG_KILL_LSP="$(git config --get wolfram.killLspPath 2>/dev/null || true)"
+EXPORTER_DIR="$(dirname "$EXPORTER")"
+
+if [ -n "$CONFIG_KILL_LSP" ] && [ -f "$CONFIG_KILL_LSP" ]; then
+  KILL_LSP="$CONFIG_KILL_LSP"
+elif [ -f "$EXPORTER_DIR/wolfram-git-kill-lsp.sh" ]; then
+  KILL_LSP="$EXPORTER_DIR/wolfram-git-kill-lsp.sh"
+elif command -v wolfram-git-kill-lsp >/dev/null 2>&1; then
+  KILL_LSP="$(command -v wolfram-git-kill-lsp)"
+elif [ -f "$SCRIPT_DIR/wolfram-git-kill-lsp.sh" ]; then
+  KILL_LSP="$SCRIPT_DIR/wolfram-git-kill-lsp.sh"
+else
+  KILL_LSP=""
+fi
+
+if [ -n "$KILL_LSP" ] && [ ! -x "$KILL_LSP" ]; then
+  chmod +x "$KILL_LSP" 2>/dev/null || true
+fi
+
+# Function to check and ensure Wolfram license availability
+ensure_wolfram_license() {
+  if ! wolframscript -code '1+1' >/dev/null 2>&1; then
+    echo "[pre-commit] Wolfram license check failed (no license available)."
+    if [ -n "$KILL_LSP" ] && [ -f "$KILL_LSP" ]; then
+      echo "[pre-commit] Running LSP kill script to release license: $KILL_LSP"
+      "$KILL_LSP" || true
+      sleep 1
+      if ! wolframscript -code '1+1' >/dev/null 2>&1; then
+        echo "[pre-commit] Error: Wolfram license still unavailable after terminating LSP." >&2
+        return 1
+      else
+        echo "[pre-commit] Wolfram license successfully acquired."
+      fi
+    else
+      echo "[pre-commit] Error: Wolfram license unavailable and kill-lsp script could not be found." >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
 # Find all staged .nb files (Added, Copied, Modified)
 STAGED_NB_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.nb$' || true)
 
@@ -47,6 +89,7 @@ fi
 # Handle added/modified .nb files
 if [ -n "$STAGED_NB_FILES" ]; then
   echo "[pre-commit] Processing staged Wolfram notebooks..."
+  ensure_wolfram_license
   while IFS= read -r nb_file; do
     [ -z "$nb_file" ] && continue
     abs_nb="$REPO_ROOT/$nb_file"
