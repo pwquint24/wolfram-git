@@ -1,12 +1,33 @@
 #!/usr/bin/env bash
 # Git pre-commit hook for Wolfram notebooks
-# Ensures companion formats (Markdown and VS Code notebooks) are generated and staged for any staged .nb files.
+# Ensures companion formats (Markdown, VS Code notebooks, and Org) are generated and staged for any staged .nb files.
 
 set -e
 
 # Determine repository root
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Read the configured output formats (space-separated: md, vsnb, org)
+CONFIG_FORMATS="$(git config --get wolfram.exportFormats 2>/dev/null || true)"
+if [ -z "$CONFIG_FORMATS" ]; then
+  CONFIG_FORMATS="md vsnb org"
+fi
+
+format_enabled() {
+  local fmt="$1"
+  local f
+  for f in $CONFIG_FORMATS; do
+    [ "$f" = "$fmt" ] && return 0
+  done
+  return 1
+}
+
+remove_companion() {
+  local companion="$1"
+  git rm -q -f --ignore-unmatch "$companion" 2>/dev/null || true
+  rm -f "$companion"
+}
 
 # Path to the exporter script
 CONFIG_EXPORTER="$(git config --get wolfram.exporterPath 2>/dev/null || true)"
@@ -26,9 +47,17 @@ if [ ! -x "$EXPORTER" ]; then
   chmod +x "$EXPORTER" 2>/dev/null || true
 fi
 
+# Locate markdown -> org converter (pandoc wrapper)
+EXPORTER_DIR="$(dirname "$EXPORTER")"
+MD_TO_ORG="$EXPORTER_DIR/wolfram-git-md-to-org.sh"
+if [ ! -f "$MD_TO_ORG" ]; then
+  MD_TO_ORG=""
+else
+  chmod +x "$MD_TO_ORG" 2>/dev/null || true
+fi
+
 # Locate kill-lsp script
 CONFIG_KILL_LSP="$(git config --get wolfram.killLspPath 2>/dev/null || true)"
-EXPORTER_DIR="$(dirname "$EXPORTER")"
 
 if [ -n "$CONFIG_KILL_LSP" ] && [ -f "$CONFIG_KILL_LSP" ]; then
   KILL_LSP="$CONFIG_KILL_LSP"
@@ -78,7 +107,7 @@ DELETED_NB_FILES=$(git diff --cached --name-only --diff-filter=D | grep -E '\.nb
 if [ -n "$DELETED_NB_FILES" ]; then
   while IFS= read -r file; do
     [ -z "$file" ] && continue
-    for companion in "${file%.nb}.md" "${file%.nb}.vsnb"; do
+    for companion in "${file%.nb}.md" "${file%.nb}.vsnb" "${file%.nb}.org"; do
       if git ls-files --error-unmatch "$companion" >/dev/null 2>&1; then
         echo "[pre-commit] Removing companion file for deleted notebook: $companion"
         git rm -q "$companion" 2>/dev/null || rm -f "$companion"
@@ -95,16 +124,50 @@ if [ -n "$STAGED_NB_FILES" ]; then
     [ -z "$nb_file" ] && continue
     abs_nb="$REPO_ROOT/$nb_file"
     if [ -f "$abs_nb" ]; then
-      echo "[pre-commit] Exporting companion formats for: $nb_file"
-      generated_files=$("$EXPORTER" "$abs_nb")
-      if [ -n "$generated_files" ]; then
-        while IFS= read -r gen_file; do
-          [ -z "$gen_file" ] && continue
-          # Stage the generated file
-          git add "$gen_file"
-          echo "[pre-commit] Staged companion: $(git ls-files --full-name "$gen_file" 2>/dev/null || basename "$gen_file")"
-        done <<< "$generated_files"
+      want_md=false; want_vsnb=false; want_org=false
+      if format_enabled md;   then want_md=true;   fi
+      if format_enabled vsnb; then want_vsnb=true; fi
+      if format_enabled org;  then want_org=true;  fi
+
+      # Markdown is also required as an intermediate when only Org is requested
+      exporter_formats=""
+      if [ "$want_md" = true ] || [ "$want_org" = true ]; then
+        exporter_formats="$exporter_formats md"
       fi
+      if [ "$want_vsnb" = true ]; then
+        exporter_formats="$exporter_formats vsnb"
+      fi
+
+      if [ -n "$exporter_formats" ]; then
+        echo "[pre-commit] Exporting companion formats for: $nb_file"
+        "$EXPORTER" "$abs_nb" $exporter_formats >/dev/null
+      fi
+
+      # Generate the Org companion from the (possibly intermediate) Markdown companion
+      md_file="${abs_nb%.nb}.md"
+      if [ "$want_org" = true ] && [ -n "$MD_TO_ORG" ] && [ -f "$md_file" ]; then
+        echo "[pre-commit] Exporting Org companion for: $nb_file"
+        "$MD_TO_ORG" "$md_file" >/dev/null || true
+      fi
+
+      # Stage only the requested formats
+      if [ "$want_md" = true ] && [ -f "$md_file" ]; then
+        git add "$md_file"
+        echo "[pre-commit] Staged companion: $(git ls-files --full-name "$md_file" 2>/dev/null || basename "$md_file")"
+      fi
+      if [ "$want_vsnb" = true ] && [ -f "${abs_nb%.nb}.vsnb" ]; then
+        git add "${abs_nb%.nb}.vsnb"
+        echo "[pre-commit] Staged companion: $(git ls-files --full-name "${abs_nb%.nb}.vsnb" 2>/dev/null || basename "${abs_nb%.nb}.vsnb")"
+      fi
+      if [ "$want_org" = true ] && [ -f "${abs_nb%.nb}.org" ]; then
+        git add "${abs_nb%.nb}.org"
+        echo "[pre-commit] Staged companion: $(git ls-files --full-name "${abs_nb%.nb}.org" 2>/dev/null || basename "${abs_nb%.nb}.org")"
+      fi
+
+      # Discard any companion formats that are not in the requested set
+      if [ "$want_md" = false ];   then remove_companion "$md_file";            fi
+      if [ "$want_vsnb" = false ]; then remove_companion "${abs_nb%.nb}.vsnb"; fi
+      if [ "$want_org" = false ];  then remove_companion "${abs_nb%.nb}.org";  fi
     fi
   done <<< "$STAGED_NB_FILES"
 fi

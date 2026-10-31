@@ -17,12 +17,14 @@ A collection of git utilities for working with Wolfram Language notebooks (`.nb`
    - Inspects all staged `.nb` files and generates companion formats:
      - `.md` — Markdown for viewing/diffing in Git web UIs and terminals.
      - `.vsnb` — VS Code notebooks for use with the [official Wolfram Language extension](https://marketplace.visualstudio.com/items?itemName=WolframResearch.wolfram).
+     - `.org` — Org mode files for use with sci-wolfram (generated from `.md` via `pandoc`, with the sci-wolfram prologue block prepended).
    - **Automatic license check**: Checks license availability via `wolframscript -code '1+1'`. If licenses are exhausted (e.g. by a background LSP server), it automatically triggers `wolfram-git-kill-lsp.sh` to free a license before proceeding.
    - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.
    - **Zero external image folders**: Images in text/input cells are embedded inline as data URIs (`data:image/png;base64,...`) via `GeneratedAssetLocation -> None`, keeping git repositories free of detached asset directories.
    - Automatically stages the generated companion files into the commit (`git add`).
    - If a notebook is deleted from git, the companion files are automatically staged for removal.
    - **Modular architecture**: Additional formats can be registered in `wolfram-git-export-formats.wls` via the `converters` association.
+   - **Configurable output formats**: Set `git config wolfram.exportFormats "md vsnb org"` to control which companions are produced (default: all three). When `org` is requested without `md`, Markdown is still generated as an intermediate and then discarded.
 
 3. **LSP Process Terminator (`wolfram-git-kill-lsp.sh` & `~/LocalDocuments/Scripts/wolfram-git-kill-lsp`)**
    - Convenient script to terminate lingering Wolfram LSP server instances and release Wolfram kernel licenses.
@@ -36,6 +38,7 @@ wolfram-git/
 ├── scripts/
 │   ├── wolfram-git-filter.wls          # Git clean filter (wolframscript)
 │   ├── wolfram-git-export-formats.wls  # Extensible notebook converter (wolframscript)
+│   ├── wolfram-git-md-to-org.sh        # Markdown → Org converter (pandoc wrapper)
 │   ├── Mathematica2Jupyter.wl          # Vendored notebook→VS Code converter (code-cell text extraction)
 │   ├── wolfram-git-pre-commit          # Git pre-commit hook script
 │   ├── wolfram-git-install-hooks.sh    # Automated installer for any repo
@@ -114,7 +117,7 @@ If you prefer to configure manually:
    ```bash
    git commit -m "Add analysis"
    ```
-   *The pre-commit hook intercepts the commit, strips all output cells, exports `analysis.md` (with inline data URIs if images are present) and `analysis.vsnb` (a VS Code notebook), stages both companions, and includes all three files in the commit.*
+   *The pre-commit hook intercepts the commit, strips all output cells, exports `analysis.md` (with inline data URIs if images are present), `analysis.vsnb` (a VS Code notebook), and `analysis.org` (converted from `analysis.md`, with the sci-wolfram prologue prepended), stages the requested companions, and includes them in the commit.*
 
 ---
 
@@ -131,6 +134,7 @@ This runs a full end-to-end integration test in an isolated sandbox repository:
 - Validates output cell removal via `wolfram-git-export-formats.wls` for both Markdown and VSNB, including a `.vsnb` → `Notebook` round-trip check.
 - Validates installer and automated companion generation/staging via `wolfram-git-pre-commit`.
 - Validates companion removal on notebook deletion.
+- Validates configurable output formats via `wolfram.exportFormats`, including the Markdown-as-intermediate case for Org-only output.
 
 ---
 

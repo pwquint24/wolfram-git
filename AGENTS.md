@@ -10,6 +10,7 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 - All utility scripts start with the `wolfram-git-` prefix:
   - `wolfram-git-filter.wls`: Git clean filter for notebook files.
   - `wolfram-git-export-formats.wls`: Companion format generator (Notebook to Markdown and VS Code notebooks).
+  - `wolfram-git-md-to-org.sh`: Markdown → Org converter (pandoc wrapper that prepends the sci-wolfram prologue source block).
   - `wolfram-git-pre-commit`: Git pre-commit hook script.
   - `wolfram-git-install-hooks.sh`: Repository installer script.
   - `wolfram-git-kill-lsp.sh`: Utility to terminate lingering Wolfram LSP processes and release kernel licenses.
@@ -48,13 +49,18 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 ---
 
 ### 4. Git Pre-Commit Hook (`wolfram-git-pre-commit`)
-- **Purpose:** Automatically generates and stages companion `.md` and `.vsnb` files whenever `.nb` files are staged for commit.
+- **Purpose:** Automatically generates and stages companion `.md`, `.vsnb`, and `.org` files whenever `.nb` files are staged for commit.
+- **Configurable output formats:**
+  - Reads `git config --get wolfram.exportFormats` (space-separated list of `md`, `vsnb`, `org`). Defaults to `md vsnb org` when unset.
+  - Calls `wolfram-git-export-formats.wls` with only the needed formats. `md` is always produced when `org` is requested, because `org` is derived from the Markdown companion.
+  - If `org` is requested, `wolfram-git-md-to-org.sh` converts the Markdown companion to Org and prepends the sci-wolfram prologue source block.
+  - Companion files whose format is not in the configured list are discarded (removed from the working tree and, if already tracked, staged for removal).
 - **Workflow:**
   - Finds all staged `.nb` files (`git diff --cached --name-only --diff-filter=ACM`).
   - **License Availability Check:** Runs a trivial invocation (`wolframscript -code '1+1'`). If no license is available (e.g., license processes exhausted by background LSP server), it automatically runs `wolfram-git-kill-lsp.sh` to release the license before retrying and continuing.
   - Calls `wolfram-git-export-formats.wls` for each staged notebook.
-  - Stages the resulting `.md` and `.vsnb` files into the commit (`git add`).
-  - Handles deletions (`git diff --cached --diff-filter=D`): if a `.nb` file is deleted from git, the corresponding companion `.md` and `.vsnb` files are automatically staged for removal.
+  - Stages the resulting companion files into the commit (`git add`).
+  - Handles deletions (`git diff --cached --diff-filter=D`): if a `.nb` file is deleted from git, the corresponding tracked companion files are automatically staged for removal.
   - Path lookup: reads `git config --get wolfram.exporterPath` and `git config --get wolfram.killLspPath`, checks `PATH`, or falls back to adjacent script locations.
 
 ---
@@ -81,5 +87,6 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
   1. `wolfram-git-filter.wls` metadata and cache stripping.
   2. `wolfram-git-export-formats.wls` output cell removal for both Markdown and VSNB, plus a `.vsnb` → `Notebook` round-trip check.
   3. End-to-end Git integration via `wolfram-git-install-hooks.sh` and `wolfram-git-pre-commit`.
-  4. Automatic staging of `.md` and `.vsnb` files on commit and removal on deletion.
-  5. License exhaustion detection, automatic LSP termination trigger, and recovery.
+  4. Automatic staging of `.md`, `.vsnb`, and `.org` files on commit and removal on deletion.
+  5. Configurable output formats via `wolfram.exportFormats` (including the Markdown-as-intermediate case for Org-only output).
+  6. License exhaustion detection, automatic LSP termination trigger, and recovery.
