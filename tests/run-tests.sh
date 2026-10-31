@@ -73,6 +73,26 @@ if [ "$VSNB_ROUNDTRIP" != "OK" ]; then
 fi
 echo "PASS: wolfram-git-export-formats.wls generated clean markdown and vsnb without output cells."
 
+# Optional test: Real-world notebook conversion if Kalman_ARMA_Stock_Forecasting.nb exists
+if [ -f "$SCRIPT_DIR/Kalman_ARMA_Stock_Forecasting.nb" ]; then
+  echo "Testing real-world notebook conversion on Kalman_ARMA_Stock_Forecasting.nb..."
+  cp "$SCRIPT_DIR/Kalman_ARMA_Stock_Forecasting.nb" "$TEST_SANDBOX/kalman.nb"
+  "$ROOT_DIR/scripts/wolfram-git-export-formats.wls" "$TEST_SANDBOX/kalman.nb"
+  if grep -q 'First\[\$Failed\]' "$TEST_SANDBOX/kalman.md"; then
+    echo "FAIL: Kalman markdown contains First[\$Failed] error artifact!"
+    exit 1
+  fi
+  if ! grep -q 'kalmanTrendFilter' "$TEST_SANDBOX/kalman.md"; then
+    echo "FAIL: Expected function name missing in Kalman markdown export!"
+    exit 1
+  fi
+  if ! grep -q 'kalmanTrendFilter' "$TEST_SANDBOX/kalman.vsnb"; then
+    echo "FAIL: Expected function name missing in Kalman vsnb export!"
+    exit 1
+  fi
+  echo "PASS: Real-world notebook Kalman_ARMA_Stock_Forecasting.nb converted cleanly."
+fi
+
 # 3. Test git repo integration (using wolfram-git-install-hooks.sh)
 echo "[3/6] Testing git integration using installer in test sandbox..."
 cd "$TEST_SANDBOX"

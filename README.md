@@ -15,8 +15,8 @@ A collection of git utilities for working with Wolfram Language notebooks (`.nb`
 2. **Pre-Commit Companion Formats Generator (`wolfram-git-pre-commit` & `wolfram-git-export-formats.wls`)**
    - Automatically runs before each commit (`git commit`).
    - Inspects all staged `.nb` files and generates companion formats:
-     - `.md` — Markdown for viewing/diffing in Git web UIs and terminals.
-     - `.vsnb` — VS Code notebooks for use with the [official Wolfram Language extension](https://marketplace.visualstudio.com/items?itemName=WolframResearch.wolfram).
+     - `.md` — Markdown for viewing/diffing in Git web UIs and terminals (rendered via kernel-level [`ResourceFunction["ExportMarkdownString"]`](https://resources.wolframcloud.com/FunctionRepository/resources/ExportMarkdownString/), the same engine powering the `WolframAgentTools` MCP server, running purely in the kernel without requiring a GUI FrontEnd).
+     - `.vsnb` — VS Code notebooks for use with the [official Wolfram Language extension](https://marketplace.visualstudio.com/items?itemName=WolframResearch.wolfram) (with comments and statement structures cleanly preserved).
      - `.org` — Org mode files for use with sci-wolfram (generated from `.md` via `pandoc`, with the sci-wolfram prologue block prepended).
    - **Automatic license check**: Checks license availability via `wolframscript -code '1+1'`. If licenses are exhausted (e.g. by a background LSP server), it automatically triggers `wolfram-git-kill-lsp.sh` to free a license before proceeding.
    - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.

@@ -33,6 +33,11 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 
 ### 3. Companion Format Exporter (`wolfram-git-export-formats.wls`)
 - **Purpose:** Converts Wolfram notebooks to companion formats — plain text Markdown (`.md`) and VS Code notebooks (`.vsnb`) — suitable for viewing in Git web interfaces (GitHub, GitLab), terminal diffs, and VS Code.
+- **Markdown export:**
+  - Uses [`ResourceFunction["ExportMarkdownString"]`](https://resources.wolframcloud.com/FunctionRepository/resources/ExportMarkdownString/) (the same kernel-level serialization engine used by the `WolframAgentTools` MCP server's `ReadNotebook` tool, built on `Wolfram`Chatbook``).
+  - Operates purely in the Wolfram kernel without requiring a GUI FrontEnd or X11/display session, avoiding the headless `FrontEndExecute` failure modes of built-in `Export[..., "Markdown"]`.
+  - Normalizes code cells to ensure proper ` ```wl ` code fences and retains comments and clean formatting.
+  - Includes a fallback to `UsingFrontEnd[Export[..., "Markdown"]]` for environments with FrontEnd support.
 - **Cell Output Discarding:**
   - Automatically removes all output cells (`Output`, `Message`, `Print`, `Echo`) from the notebook prior to conversion.
   - Unwraps `CellGroupData` to preserve input and documentation cells while discarding output and graphics artifacts.
@@ -41,8 +46,8 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
   - Any images present in text or input cells are stored inline as base64 data URIs (`data:image/png;base64,...`) rather than in detached `img/` folders.
 - **VSNB generation:**
   - Emits the JSON VS Code notebook schema expected by Wolfram's `Import[..., "VSNB"]`: cells with `kind`, `value`, `languageId`, `outputs`, `metadata`, and `executionSummary`.
-  - Code cells (`Input`, `Code`) use a vendored copy of [`mathematica2jupyter`](https://github.com/divenex/mathematica2jupyter) (`scripts/Mathematica2Jupyter.wl`) for robust `BoxData` → input-text extraction.
-  - Markdown cells reuse the built-in Markdown exporter so `.vsnb` headings/styling match the `.md` companion.
+  - Code cells (`Input`, `Code`) extract clean code text with comments and multi-line statements preserved using kernel-level `Wolfram`Chatbook`CellToString` and `FrontEndExportPacket` via `UsingFrontEnd`, with a fallback to vendored [`mathematica2jupyter`](https://github.com/divenex/mathematica2jupyter) (`scripts/Mathematica2Jupyter.wl`).
+  - Markdown cells reuse the kernel Markdown exporter so `.vsnb` headings/styling match the `.md` companion.
 - **Modularity:**
   - Supports an extensible converter association (`converters`), allowing other formats to be added easily in the future.
 
@@ -85,7 +90,7 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 - Automated integration test suite that creates an isolated sandbox Git repository in a subdirectory (`tests/test-sandbox`).
 - Verifies:
   1. `wolfram-git-filter.wls` metadata and cache stripping.
-  2. `wolfram-git-export-formats.wls` output cell removal for both Markdown and VSNB, plus a `.vsnb` → `Notebook` round-trip check.
+  2. `wolfram-git-export-formats.wls` output cell removal for both Markdown and VSNB, plus a `.vsnb` → `Notebook` round-trip check, along with real-world notebook export validation (`tests/Kalman_ARMA_Stock_Forecasting.nb`).
   3. End-to-end Git integration via `wolfram-git-install-hooks.sh` and `wolfram-git-pre-commit`.
   4. Automatic staging of `.md`, `.vsnb`, and `.org` files on commit and removal on deletion.
   5. Configurable output formats via `wolfram.exportFormats` (including the Markdown-as-intermediate case for Org-only output).

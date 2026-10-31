@@ -9,6 +9,10 @@ Quiet[
     requestedFormats,
     activeFormats = {"md", "vsnb"},
     stripOutputs,
+    normalizeCodeCells,
+    extractCode,
+    extractMarkdown,
+    exportMarkdown,
     flattenCellGroups,
     vsnbCellAssoc,
     exportVSNB,
@@ -48,25 +52,115 @@ Quiet[
     ];
     vsnbPackagePath = FileNameJoin[{scriptDir, "Mathematica2Jupyter.wl"}];
 
+    (* Normalize code cells to BoxData if given as plain strings *)
+    normalizeCodeCells[nb_Notebook] := 
+      nb /. Cell[s_String, t:("Input" | "Code"), opts___] :> Cell[BoxData[s], t, opts];
+
+    (* Export a cleaned notebook as Markdown without FrontEnd dependency *)
+    exportMarkdown[nb_Notebook, outFile_String] := Module[{mdString, success = False},
+      (* Primary method: ResourceFunction["ExportMarkdownString"] which runs purely in kernel via Chatbook *)
+      mdString = Quiet @ Check[
+        ResourceFunction["ExportMarkdownString"][normalizeCodeCells[nb]],
+        $Failed
+      ];
+      
+      (* Verify markdown was generated and did not fail *)
+      If[StringQ[mdString] && StringLength[mdString] > 0 && !StringContainsQ[mdString, "First[$Failed]"],
+        Quiet @ Export[outFile, mdString, "String"];
+        If[FileExistsQ[outFile], success = True]
+      ];
+
+      (* Fallback: Try UsingFrontEnd with built-in Export *)
+      If[!success,
+        Module[{res},
+          res = Quiet @ UsingFrontEnd[Export[outFile, nb, "Markdown", GeneratedAssetLocation -> None]];
+          If[res =!= $Failed && FileExistsQ[outFile],
+            Module[{content = Quiet @ Import[outFile, "Text"]},
+              If[StringQ[content] && !StringContainsQ[content, "First[$Failed]"],
+                success = True,
+                Quiet @ DeleteFile[outFile];
+                success = False
+              ]
+            ]
+          ]
+        ]
+      ];
+
+      If[success, outFile, $Failed]
+    ];
+
     (* Flatten CellGroupData wrappers into a flat list of leaf cells *)
     flattenCellGroups[expr_] := Flatten[expr //. {
       CellGroupData[cells_List, ___] :> cells,
       Cell[CellGroupData[cells_List, ___], ___] :> cells
     }];
 
+    (* Extract plain code string from code/input cell content *)
+    extractCode[content_] := Module[{res},
+      If[StringQ[content], Return[content]];
+      
+      (* Method 1: Using Chatbook CellToString if available *)
+      res = Quiet @ Check[
+        Module[{str = Wolfram`Chatbook`CellToString[Cell[If[Head[content] === BoxData, content, BoxData[content]], "Input"]]},
+          If[StringQ[str],
+            If[StringStartsQ[str, "```wl\n"], str = StringDrop[str, 6]];
+            If[StringStartsQ[str, "```wolfram\n"], str = StringDrop[str, 11]];
+            If[StringEndsQ[str, "\n```"], str = StringDrop[str, -4]];
+            If[StringEndsQ[str, "```"], str = StringDrop[str, -3]];
+            str,
+            $Failed
+          ]
+        ],
+        $Failed
+      ];
+      If[StringQ[res] && res =!= "$Failed", Return[res]];
+
+      (* Method 2: FrontEndExportPacket via UsingFrontEnd *)
+      res = Quiet @ Check[
+        UsingFrontEnd[First[FrontEndExecute[FrontEnd`ExportPacket[If[Head[content] === BoxData, content, BoxData[content]], "InputText"]]]],
+        $Failed
+      ];
+      If[StringQ[res] && res =!= "$Failed", Return[res]];
+
+      (* Method 3: Fallback to vendored Mathematica2Jupyter *)
+      If[FileExistsQ[vsnbPackagePath],
+        Quiet @ Get[vsnbPackagePath];
+        res = Quiet @ Mathematica2Jupyter`Private`processInput[content];
+        If[StringQ[res], Return[res]]
+      ];
+
+      ToString[content, InputForm]
+    ];
+
+    (* Extract markdown text from non-code leaf cell *)
+    extractMarkdown[cell_Cell] := Module[{md},
+      (* Method 1: ResourceFunction["ExportMarkdownString"] *)
+      md = Quiet @ Check[
+        ResourceFunction["ExportMarkdownString"][Notebook[{cell}]],
+        $Failed
+      ];
+      If[StringQ[md] && md =!= "$Failed" && !StringContainsQ[md, "First[$Failed]"],
+        Return[StringTrim[md, "\n"]]
+      ];
+
+      (* Method 2: UsingFrontEnd or built-in ExportString *)
+      md = Quiet @ UsingFrontEnd[ExportString[Notebook[{cell}], "Markdown", GeneratedAssetLocation -> None]];
+      If[StringQ[md] && !StringContainsQ[md, "First[$Failed]"],
+        Return[StringTrim[md, "\n"]]
+      ];
+
+      ToString[First[cell], InputForm]
+    ];
+
     (* Convert a single leaf cell to a VSNB (VS Code notebook) cell association *)
     vsnbCellAssoc[cell_Cell] := Module[{style = cell[[2]], content = First[cell], kind, value, languageId},
       If[MemberQ[{"Input", "Code"}, style],
         kind = 2;
         languageId = "wolfram";
-        value = Module[{input = Quiet @ Mathematica2Jupyter`Private`processInput[content]},
-          If[StringQ[input], input, ToString[content, InputForm]]
-        ],
+        value = extractCode[content],
         kind = 1;
         languageId = "markdown";
-        value = Module[{md = Quiet @ ExportString[Notebook[{cell}], "Markdown", GeneratedAssetLocation -> None]},
-          If[StringQ[md], StringTrim[md, "\n"], ToString[content, InputForm]]
-        ]
+        value = extractMarkdown[cell]
       ];
       <|"kind" -> kind,
         "value" -> value,
@@ -78,11 +172,6 @@ Quiet[
 
     (* Export a cleaned notebook as a VSNB (VS Code notebook) file *)
     exportVSNB[nb_Notebook, outFile_String] := Module[{leafCells, cellAssocs},
-      If[!FileExistsQ[vsnbPackagePath],
-        WriteString[$Messages, "Warning: VSNB export requires " <> vsnbPackagePath <> "\n"];
-        Return[$Failed]
-      ];
-      Get[vsnbPackagePath];
       leafCells = Cases[flattenCellGroups[First[nb]], _Cell];
       cellAssocs = Map[vsnbCellAssoc, leafCells];
       Export[outFile, <|"cells" -> cellAssocs|>, "JSON"]
@@ -91,7 +180,7 @@ Quiet[
     (* Format Converters Registry: extensible for future formats *)
     converters = <|
       "md" -> Function[{nb, outFile},
-        Export[outFile, nb, "Markdown", GeneratedAssetLocation -> None]
+        exportMarkdown[nb, outFile]
       ],
       "vsnb" -> Function[{nb, outFile},
         exportVSNB[nb, outFile]

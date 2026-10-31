@@ -2,3 +2,4 @@
 tests/test-sandbox/
 *.tmp
 /.projectile
+/AgentTools-main
