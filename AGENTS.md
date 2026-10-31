@@ -9,7 +9,7 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 ### 1. Script Organization & Naming Convention
 - All utility scripts start with the `wolfram-git-` prefix:
   - `wolfram-git-filter.wls`: Git clean filter for notebook files.
-  - `wolfram-git-export-formats.wls`: Companion format generator (Notebook to Markdown).
+  - `wolfram-git-export-formats.wls`: Companion format generator (Notebook to Markdown and VS Code notebooks).
   - `wolfram-git-pre-commit`: Git pre-commit hook script.
   - `wolfram-git-install-hooks.sh`: Repository installer script.
   - `wolfram-git-kill-lsp.sh`: Utility to terminate lingering Wolfram LSP processes and release kernel licenses.
@@ -31,26 +31,30 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 ---
 
 ### 3. Companion Format Exporter (`wolfram-git-export-formats.wls`)
-- **Purpose:** Converts Wolfram notebooks to plain text Markdown (`.md`) suitable for viewing in Git web interfaces (GitHub, GitLab) and terminal diffs.
+- **Purpose:** Converts Wolfram notebooks to companion formats — plain text Markdown (`.md`) and VS Code notebooks (`.vsnb`) — suitable for viewing in Git web interfaces (GitHub, GitLab), terminal diffs, and VS Code.
 - **Cell Output Discarding:**
   - Automatically removes all output cells (`Output`, `Message`, `Print`, `Echo`) from the notebook prior to conversion.
   - Unwraps `CellGroupData` to preserve input and documentation cells while discarding output and graphics artifacts.
 - **No External Images:**
   - Configures `GeneratedAssetLocation -> None` during export.
   - Any images present in text or input cells are stored inline as base64 data URIs (`data:image/png;base64,...`) rather than in detached `img/` folders.
+- **VSNB generation:**
+  - Emits the JSON VS Code notebook schema expected by Wolfram's `Import[..., "VSNB"]`: cells with `kind`, `value`, `languageId`, `outputs`, `metadata`, and `executionSummary`.
+  - Code cells (`Input`, `Code`) use a vendored copy of [`mathematica2jupyter`](https://github.com/divenex/mathematica2jupyter) (`scripts/Mathematica2Jupyter.wl`) for robust `BoxData` → input-text extraction.
+  - Markdown cells reuse the built-in Markdown exporter so `.vsnb` headings/styling match the `.md` companion.
 - **Modularity:**
-  - Supports an extensible converter association (`$FormatConverters`), allowing other formats to be added easily in the future.
+  - Supports an extensible converter association (`converters`), allowing other formats to be added easily in the future.
 
 ---
 
 ### 4. Git Pre-Commit Hook (`wolfram-git-pre-commit`)
-- **Purpose:** Automatically generates and stages companion `.md` files whenever `.nb` files are staged for commit.
+- **Purpose:** Automatically generates and stages companion `.md` and `.vsnb` files whenever `.nb` files are staged for commit.
 - **Workflow:**
   - Finds all staged `.nb` files (`git diff --cached --name-only --diff-filter=ACM`).
   - **License Availability Check:** Runs a trivial invocation (`wolframscript -code '1+1'`). If no license is available (e.g., license processes exhausted by background LSP server), it automatically runs `wolfram-git-kill-lsp.sh` to release the license before retrying and continuing.
   - Calls `wolfram-git-export-formats.wls` for each staged notebook.
-  - Stages the resulting `.md` files into the commit (`git add`).
-  - Handles deletions (`git diff --cached --diff-filter=D`): if a `.nb` file is deleted from git, the corresponding companion `.md` file is automatically staged for removal.
+  - Stages the resulting `.md` and `.vsnb` files into the commit (`git add`).
+  - Handles deletions (`git diff --cached --diff-filter=D`): if a `.nb` file is deleted from git, the corresponding companion `.md` and `.vsnb` files are automatically staged for removal.
   - Path lookup: reads `git config --get wolfram.exporterPath` and `git config --get wolfram.killLspPath`, checks `PATH`, or falls back to adjacent script locations.
 
 ---
@@ -75,7 +79,7 @@ Utilities for managing Wolfram Language notebooks (`.nb`) in Git repositories.
 - Automated integration test suite that creates an isolated sandbox Git repository in a subdirectory (`tests/test-sandbox`).
 - Verifies:
   1. `wolfram-git-filter.wls` metadata and cache stripping.
-  2. `wolfram-git-export-formats.wls` output cell removal and markdown formatting.
+  2. `wolfram-git-export-formats.wls` output cell removal for both Markdown and VSNB, plus a `.vsnb` → `Notebook` round-trip check.
   3. End-to-end Git integration via `wolfram-git-install-hooks.sh` and `wolfram-git-pre-commit`.
-  4. Automatic staging of `.md` files on commit and removal on deletion.
+  4. Automatic staging of `.md` and `.vsnb` files on commit and removal on deletion.
   5. License exhaustion detection, automatic LSP termination trigger, and recovery.

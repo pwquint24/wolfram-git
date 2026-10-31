@@ -14,13 +14,15 @@ A collection of git utilities for working with Wolfram Language notebooks (`.nb`
 
 2. **Pre-Commit Companion Formats Generator (`wolfram-git-pre-commit` & `wolfram-git-export-formats.wls`)**
    - Automatically runs before each commit (`git commit`).
-   - Inspects all staged `.nb` files and generates companion formats (such as `.md` Markdown).
+   - Inspects all staged `.nb` files and generates companion formats:
+     - `.md` — Markdown for viewing/diffing in Git web UIs and terminals.
+     - `.vsnb` — VS Code notebooks for use with the [official Wolfram Language extension](https://marketplace.visualstudio.com/items?itemName=WolframResearch.wolfram).
    - **Automatic license check**: Checks license availability via `wolframscript -code '1+1'`. If licenses are exhausted (e.g. by a background LSP server), it automatically triggers `wolfram-git-kill-lsp.sh` to free a license before proceeding.
    - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.
    - **Zero external image folders**: Images in text/input cells are embedded inline as data URIs (`data:image/png;base64,...`) via `GeneratedAssetLocation -> None`, keeping git repositories free of detached asset directories.
-   - Automatically stages the generated `.md` files into the commit (`git add`).
-   - If a notebook is deleted from git, the companion file is automatically staged for removal.
-   - **Modular architecture**: Additional formats can be registered in `wolfram-git-export-formats.wls` via `$FormatConverters`.
+   - Automatically stages the generated companion files into the commit (`git add`).
+   - If a notebook is deleted from git, the companion files are automatically staged for removal.
+   - **Modular architecture**: Additional formats can be registered in `wolfram-git-export-formats.wls` via the `converters` association.
 
 3. **LSP Process Terminator (`wolfram-git-kill-lsp.sh` & `~/LocalDocuments/Scripts/wolfram-git-kill-lsp`)**
    - Convenient script to terminate lingering Wolfram LSP server instances and release Wolfram kernel licenses.
@@ -34,6 +36,7 @@ wolfram-git/
 ├── scripts/
 │   ├── wolfram-git-filter.wls          # Git clean filter (wolframscript)
 │   ├── wolfram-git-export-formats.wls  # Extensible notebook converter (wolframscript)
+│   ├── Mathematica2Jupyter.wl          # Vendored notebook→VS Code converter (code-cell text extraction)
 │   ├── wolfram-git-pre-commit          # Git pre-commit hook script
 │   ├── wolfram-git-install-hooks.sh    # Automated installer for any repo
 │   └── wolfram-git-kill-lsp.sh         # Utility to terminate Wolfram LSP processes
@@ -111,7 +114,7 @@ If you prefer to configure manually:
    ```bash
    git commit -m "Add analysis"
    ```
-   *The pre-commit hook intercepts the commit, strips all output cells, exports `analysis.md` (with inline data URIs if images are present), stages `analysis.md`, and includes both files in the commit.*
+   *The pre-commit hook intercepts the commit, strips all output cells, exports `analysis.md` (with inline data URIs if images are present) and `analysis.vsnb` (a VS Code notebook), stages both companions, and includes all three files in the commit.*
 
 ---
 
@@ -125,6 +128,12 @@ To verify all components:
 
 This runs a full end-to-end integration test in an isolated sandbox repository:
 - Validates metadata and cache stripping via `wolfram-git-filter.wls`.
-- Validates output cell removal via `wolfram-git-export-formats.wls`.
+- Validates output cell removal via `wolfram-git-export-formats.wls` for both Markdown and VSNB, including a `.vsnb` → `Notebook` round-trip check.
 - Validates installer and automated companion generation/staging via `wolfram-git-pre-commit`.
 - Validates companion removal on notebook deletion.
+
+---
+
+## Credits
+
+`.vsnb` (VS Code notebook) generation uses a vendored copy of [mathematica2jupyter](https://github.com/divenex/mathematica2jupyter) (© 2025 [divenex](https://github.com/divenex)) for robust Wolfram input-cell text extraction.

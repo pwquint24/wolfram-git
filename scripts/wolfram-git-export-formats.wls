@@ -7,8 +7,13 @@ Quiet[
     args = Rest[$ScriptCommandLine],
     nbFile,
     requestedFormats,
-    activeFormats = {"md"},
+    activeFormats = {"md", "vsnb"},
     stripOutputs,
+    flattenCellGroups,
+    vsnbCellAssoc,
+    exportVSNB,
+    scriptDir,
+    vsnbPackagePath,
     converters,
     rawNb,
     cleanedNb,
@@ -36,15 +41,61 @@ Quiet[
         Cell[_, "Output" | "Message" | "Print" | "Echo", ___] :> Sequence[]
       };
 
+    (* Locate the vendored mathematica2jupyter package (used for code-cell text extraction) *)
+    scriptDir = If[StringQ[$InputFileName] && $InputFileName =!= "",
+      DirectoryName[$InputFileName],
+      DirectoryName[First[$ScriptCommandLine]]
+    ];
+    vsnbPackagePath = FileNameJoin[{scriptDir, "Mathematica2Jupyter.wl"}];
+
+    (* Flatten CellGroupData wrappers into a flat list of leaf cells *)
+    flattenCellGroups[expr_] := Flatten[expr //. {
+      CellGroupData[cells_List, ___] :> cells,
+      Cell[CellGroupData[cells_List, ___], ___] :> cells
+    }];
+
+    (* Convert a single leaf cell to a VSNB (VS Code notebook) cell association *)
+    vsnbCellAssoc[cell_Cell] := Module[{style = cell[[2]], content = First[cell], kind, value, languageId},
+      If[MemberQ[{"Input", "Code"}, style],
+        kind = 2;
+        languageId = "wolfram";
+        value = Module[{input = Quiet @ Mathematica2Jupyter`Private`processInput[content]},
+          If[StringQ[input], input, ToString[content, InputForm]]
+        ],
+        kind = 1;
+        languageId = "markdown";
+        value = Module[{md = Quiet @ ExportString[Notebook[{cell}], "Markdown", GeneratedAssetLocation -> None]},
+          If[StringQ[md], StringTrim[md, "\n"], ToString[content, InputForm]]
+        ]
+      ];
+      <|"kind" -> kind,
+        "value" -> value,
+        "languageId" -> languageId,
+        "outputs" -> {},
+        "metadata" -> <||>,
+        "executionSummary" -> <||>|>
+    ];
+
+    (* Export a cleaned notebook as a VSNB (VS Code notebook) file *)
+    exportVSNB[nb_Notebook, outFile_String] := Module[{leafCells, cellAssocs},
+      If[!FileExistsQ[vsnbPackagePath],
+        WriteString[$Messages, "Warning: VSNB export requires " <> vsnbPackagePath <> "\n"];
+        Return[$Failed]
+      ];
+      Get[vsnbPackagePath];
+      leafCells = Cases[flattenCellGroups[First[nb]], _Cell];
+      cellAssocs = Map[vsnbCellAssoc, leafCells];
+      Export[outFile, <|"cells" -> cellAssocs|>, "JSON"]
+    ];
+
     (* Format Converters Registry: extensible for future formats *)
     converters = <|
       "md" -> Function[{nb, outFile},
         Export[outFile, nb, "Markdown", GeneratedAssetLocation -> None]
+      ],
+      "vsnb" -> Function[{nb, outFile},
+        exportVSNB[nb, outFile]
       ]
-      (* Future format converters can be registered here:
-         "wsnb" -> Function[{nb, outFile}, ...],
-         "wl" -> Function[{nb, outFile}, ...]
-      *)
     |>;
 
     If[Length[args] < 1,

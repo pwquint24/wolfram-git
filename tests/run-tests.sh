@@ -53,7 +53,25 @@ if ! grep -q "2 + 2" "$TEST_SANDBOX/sample.md"; then
   echo "FAIL: Input cell missing in markdown export!"
   exit 1
 fi
-echo "PASS: wolfram-git-export-formats.wls generated clean markdown without output cells."
+if [ ! -f "$TEST_SANDBOX/sample.vsnb" ]; then
+  echo "FAIL: sample.vsnb was not generated!"
+  exit 1
+fi
+if grep -q '"value":"4"' "$TEST_SANDBOX/sample.vsnb"; then
+  echo "FAIL: Output cell was not discarded in vsnb export!"
+  exit 1
+fi
+if ! grep -q '"value":"2 + 2"' "$TEST_SANDBOX/sample.vsnb"; then
+  echo "FAIL: Input cell missing in vsnb export!"
+  exit 1
+fi
+# Verify the vsnb round-trips back to a valid Wolfram Notebook
+VSNB_ROUNDTRIP=$(cd "$TEST_SANDBOX" && wolframscript -code 'If[MatchQ[Import["sample.vsnb", {"VSNB", "Notebook"}], Notebook[{__Cell}]], "OK", "BAD"]' 2>/dev/null)
+if [ "$VSNB_ROUNDTRIP" != "OK" ]; then
+  echo "FAIL: sample.vsnb did not round-trip to a valid Wolfram Notebook!"
+  exit 1
+fi
+echo "PASS: wolfram-git-export-formats.wls generated clean markdown and vsnb without output cells."
 
 # 3. Test git repo integration (using wolfram-git-install-hooks.sh)
 echo "[3/4] Testing git integration using installer in test sandbox..."
@@ -92,14 +110,22 @@ fi
 
 git commit -m "Add notebook1" -q
 
-# Verify notebook1.md was generated and committed
+# Verify companion files were generated and committed
 if [ ! -f "notebook1.md" ]; then
   echo "FAIL: notebook1.md was not created!"
+  exit 1
+fi
+if [ ! -f "notebook1.vsnb" ]; then
+  echo "FAIL: notebook1.vsnb was not created!"
   exit 1
 fi
 COMMITTED_FILES=$(git log -1 --name-only --pretty="")
 if ! echo "$COMMITTED_FILES" | grep -q "notebook1.md"; then
   echo "FAIL: notebook1.md was not included in the git commit!"
+  exit 1
+fi
+if ! echo "$COMMITTED_FILES" | grep -q "notebook1.vsnb"; then
+  echo "FAIL: notebook1.vsnb was not included in the git commit!"
   exit 1
 fi
 echo "PASS: Git filter and pre-commit hook integrated seamlessly."
@@ -112,7 +138,11 @@ if git ls-files | grep -q "notebook1.md"; then
   echo "FAIL: notebook1.md should have been removed from git index!"
   exit 1
 fi
-echo "PASS: Notebook deletion removes companion markdown."
+if git ls-files | grep -q "notebook1.vsnb"; then
+  echo "FAIL: notebook1.vsnb should have been removed from git index!"
+  exit 1
+fi
+echo "PASS: Notebook deletion removes companion files."
 
 # 5. Test license recovery mechanism
 echo "[5/5] Testing license exhaustion detection & kill-lsp trigger..."
