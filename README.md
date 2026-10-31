@@ -1,0 +1,128 @@
+# Wolfram Git Utilities
+
+A collection of git utilities for working with Wolfram Language notebooks (`.nb`) in git repositories.
+
+---
+
+## Features
+
+1. **Git Clean Filter for Notebooks (`wolfram-git-filter.wls`)**
+   - Automatically cleans `.nb` files when staged (`git add`).
+   - Uses Wolfram Research's [`ResourceFunction["SaveReadableNotebook"]`](https://resources.wolframcloud.com/FunctionRepository/resources/SaveReadableNotebook/) to strip transient cache data, window dimensions/margins, cell change timestamps, and internal UUIDs.
+   - Formats notebooks into human-readable, multiline indented structures to produce clean, legible git diffs.
+   - Falls back safely to original content if processing fails.
+
+2. **Pre-Commit Companion Formats Generator (`wolfram-git-pre-commit` & `wolfram-git-export-formats.wls`)**
+   - Automatically runs before each commit (`git commit`).
+   - Inspects all staged `.nb` files and generates companion formats (such as `.md` Markdown).
+   - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.
+   - **Zero external image folders**: Images in text/input cells are embedded inline as data URIs (`data:image/png;base64,...`) via `GeneratedAssetLocation -> None`, keeping git repositories free of detached asset directories.
+   - Automatically stages the generated `.md` files into the commit (`git add`).
+   - If a notebook is deleted from git, the companion file is automatically staged for removal.
+   - **Modular architecture**: Additional formats can be registered in `wolfram-git-export-formats.wls` via `$FormatConverters`.
+
+3. **LSP Process Terminator (`wolfram-git-kill-lsp.sh` & `~/LocalDocuments/Scripts/wolfram-git-kill-lsp`)**
+   - Convenient script to terminate lingering Wolfram LSP server instances and release Wolfram kernel licenses.
+
+---
+
+## Directory Structure
+
+```
+wolfram-git/
+├── scripts/
+│   ├── wolfram-git-filter.wls          # Git clean filter (wolframscript)
+│   ├── wolfram-git-export-formats.wls  # Extensible notebook converter (wolframscript)
+│   ├── wolfram-git-pre-commit          # Git pre-commit hook script
+│   ├── wolfram-git-install-hooks.sh    # Automated installer for any repo
+│   └── wolfram-git-kill-lsp.sh         # Utility to terminate Wolfram LSP processes
+├── tests/
+│   └── run-tests.sh                    # Automated integration test suite
+├── .gitignore
+├── AGENTS.md
+└── README.md
+```
+
+> **Note:** The scripts do **not** need to reside in a `scripts/` subfolder of target repositories. They can live together in any directory (such as `~/LocalDocuments/Scripts/` or this repository). `wolfram-git-install-hooks.sh` automatically configures git to point to its own directory.
+
+---
+
+## Quick Setup (Automated)
+
+To install the filter and pre-commit hook in any repository:
+
+```bash
+cd /path/to/your/git-repo
+/path/to/wolfram-git-install-hooks.sh
+```
+
+For example, using the scripts in this project:
+
+```bash
+cd /path/to/your/git-repo
+/Users/andrewpatrick/LocalDocuments/VSCode/Wolfram/wolfram-git/scripts/wolfram-git-install-hooks.sh
+```
+
+This script automatically:
+1. Copies `wolfram-git-pre-commit` into `.git/hooks/pre-commit` and marks it executable.
+2. Configures `git config filter.wolfram-nb.clean` to point to `wolfram-git-filter.wls`.
+3. Sets `git config filter.wolfram-nb.smudge cat`.
+4. Appends `*.nb filter=wolfram-nb` to `.gitattributes`.
+5. Records the path to `wolfram-git-export-formats.wls` in `git config wolfram.exporterPath`.
+
+---
+
+## Manual Setup
+
+If you prefer to configure manually:
+
+1. **Configure the Git Filter**:
+   ```bash
+   git config filter.wolfram-nb.clean "/path/to/wolfram-git-filter.wls"
+   git config filter.wolfram-nb.smudge "cat"
+   git config filter.wolfram-nb.required true
+   ```
+
+2. **Add to `.gitattributes`**:
+   ```gitattributes
+   *.nb filter=wolfram-nb
+   ```
+
+3. **Install the Pre-Commit Hook**:
+   ```bash
+   cp /path/to/wolfram-git-pre-commit .git/hooks/pre-commit
+   chmod +x .git/hooks/pre-commit
+   git config wolfram.exporterPath "/path/to/wolfram-git-export-formats.wls"
+   ```
+
+---
+
+## How It Works in Practice
+
+1. You create or edit `analysis.nb` in Mathematica or Wolfram.
+2. You stage the file:
+   ```bash
+   git add analysis.nb
+   ```
+   *The clean filter runs transparently in the background, stripping UUIDs, timestamps, and window dimensions before writing to git's object store.*
+3. You commit:
+   ```bash
+   git commit -m "Add analysis"
+   ```
+   *The pre-commit hook intercepts the commit, strips all output cells, exports `analysis.md` (with inline data URIs if images are present), stages `analysis.md`, and includes both files in the commit.*
+
+---
+
+## Running the Tests
+
+To verify all components:
+
+```bash
+./tests/run-tests.sh
+```
+
+This runs a full end-to-end integration test in an isolated sandbox repository:
+- Validates metadata and cache stripping via `wolfram-git-filter.wls`.
+- Validates output cell removal via `wolfram-git-export-formats.wls`.
+- Validates installer and automated companion generation/staging via `wolfram-git-pre-commit`.
+- Validates companion removal on notebook deletion.
