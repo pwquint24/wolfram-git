@@ -35,7 +35,10 @@ Notebook[{
   Cell["Sample Title", "Title"],
   Cell[CellGroupData[{
     Cell["2 + 2", "Input"],
-    Cell["4", "Output"]
+    Cell[CellGroupData[{
+      Cell["some print output", "Print"],
+      Cell["4", "Output"]
+    }, Open]]
   }, Open]]
 }]
 EOF
@@ -49,6 +52,10 @@ if grep -q "4" "$TEST_SANDBOX/sample.md"; then
   echo "FAIL: Output cell was not discarded in markdown export!"
   exit 1
 fi
+if grep -q "some print output" "$TEST_SANDBOX/sample.md"; then
+  echo "FAIL: Print cell was not discarded in markdown export!"
+  exit 1
+fi
 if ! grep -q "2 + 2" "$TEST_SANDBOX/sample.md"; then
   echo "FAIL: Input cell missing in markdown export!"
   exit 1
@@ -59,6 +66,10 @@ if [ ! -f "$TEST_SANDBOX/sample.vsnb" ]; then
 fi
 if grep -q '"value":"4"' "$TEST_SANDBOX/sample.vsnb"; then
   echo "FAIL: Output cell was not discarded in vsnb export!"
+  exit 1
+fi
+if grep -q "some print output" "$TEST_SANDBOX/sample.vsnb"; then
+  echo "FAIL: Print cell was not discarded in vsnb export!"
   exit 1
 fi
 if ! grep -q '"value":"2 + 2"' "$TEST_SANDBOX/sample.vsnb"; then
@@ -80,6 +91,14 @@ if [ -f "$SCRIPT_DIR/Kalman_ARMA_Stock_Forecasting.nb" ]; then
   "$ROOT_DIR/scripts/wolfram-git-export-formats.wls" "$TEST_SANDBOX/kalman.nb"
   if grep -q 'First\[\$Failed\]' "$TEST_SANDBOX/kalman.md"; then
     echo "FAIL: Kalman markdown contains First[\$Failed] error artifact!"
+    exit 1
+  fi
+  if grep -q 'During evaluation' "$TEST_SANDBOX/kalman.md"; then
+    echo "FAIL: Kalman markdown contains output or print cell artifacts!"
+    exit 1
+  fi
+  if grep -q 'During evaluation' "$TEST_SANDBOX/kalman.vsnb"; then
+    echo "FAIL: Kalman vsnb contains output or print cell artifacts!"
     exit 1
   fi
   if ! grep -q 'kalmanTrendFilter' "$TEST_SANDBOX/kalman.md"; then
@@ -109,7 +128,7 @@ cat << 'EOF' > notebook1.nb
 Notebook[{
   Cell["Integration Title", "Title", ExpressionUUID -> "int-uuid-1"],
   Cell[CellGroupData[{
-    Cell["Sqrt[16]", "Input", ExpressionUUID -> "int-uuid-2"],
+    Cell["Sqrt[16]", "Input", CellLabel -> "In[1]:=", ExpressionUUID -> "int-uuid-2"],
     Cell["4", "Output", ExpressionUUID -> "int-uuid-3"]
   }, Open]]
 }, WindowSize -> {800, 600}]
@@ -145,6 +164,10 @@ if [ ! -f "notebook1.org" ]; then
 fi
 if ! grep -q "import-sci-wolfram-image-package" "notebook1.org"; then
   echo "FAIL: sci-wolfram prologue block missing in notebook1.org!"
+  exit 1
+fi
+if grep -q "In\[1\]:=" "notebook1.org"; then
+  echo "FAIL: In[1]:= label was not stripped in notebook1.org!"
   exit 1
 fi
 COMMITTED_FILES=$(git log -1 --name-only --pretty="")

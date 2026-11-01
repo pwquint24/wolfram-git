@@ -27,4 +27,15 @@ org_file="${md_file%.md}.org"
   pandoc -f markdown-auto_identifiers -t org "$md_file"
 } > "$org_file"
 
+# Post-process with Emacs/Elisp to strip any In[xx]:= prefixes in source blocks
+if command -v emacs >/dev/null 2>&1; then
+  emacs --batch --eval "
+(let ((file \"$org_file\"))
+  (with-current-buffer (find-file-noselect file)
+    (goto-char (point-min))
+    (while (re-search-forward \"^In\\\\[[0-9]+\\\\]:[= \\t]*\\n\" nil t)
+      (replace-match \"\"))
+    (save-buffer)))" 2>/dev/null || true
+fi
+
 echo "$org_file"

@@ -59,6 +59,7 @@ P*avg*Kalman = (1/H) * Sum[mu\_T + h * beta*T, {h, 1, H}] = mu*T + ((H + 1) / 2)
 We acquire daily historical data for the S&P 500 ETF (SPY) using Wolfram Language's built-in FinancialData. We convert Quantity expressions to pure numeric values and compute continuously compounded log returns.
 
 ```wl
+In[1]:=
 (* Define stock ticker and evaluation date range *)
 	ticker = "SPY";
 	startDate = {2023, 1, 1};
@@ -81,6 +82,7 @@ We acquire daily historical data for the S&P 500 ETF (SPY) using Wolfram Languag
 Next, we compute log returns and visualize the historical price trajectory alongside the daily return series.
 
 ```wl
+In[11]:=
 (* Compute log returns *)
 	logPrices = Log[rawPrices];
 	logReturns = Differences[logPrices];
@@ -104,6 +106,7 @@ Next, we compute log returns and visualize the historical price trajectory along
 We now compute key summary statistics for the daily returns:
 
 ```wl
+In[16]:=
 (* Summary statistics for log returns *)
 	retMean = Mean[logReturns];
 	retStd = StandardDeviation[logReturns];
@@ -128,6 +131,7 @@ We now compute key summary statistics for the daily returns:
 We partition the dataset into an in-sample training window (450 trading days) and an out-of-sample evaluation window (20 trading days, ~1 calendar month). We fit an ARMA process to stationary returns and forecast the future trajectory.
 
 ```wl
+In[21]:=
 (* Split data into In-Sample Training and Out-of-Sample Testing sets *)
 	nTrain = 450;
 	horizon = 20;
@@ -147,6 +151,7 @@ We partition the dataset into an in-sample training window (450 trading days) an
 We now estimate the optimal ARMA model using TimeSeriesModelFit:
 
 ```wl
+In[30]:=
 (* Fit an ARMA model to stationary log returns *)
 	tsmARMA = TimeSeriesModelFit[trainLogReturns, "ARMA"];
 	fittedProcess = tsmARMA["Process"];
@@ -158,6 +163,7 @@ We now estimate the optimal ARMA model using TimeSeriesModelFit:
 We verify the model fit using residual diagnostics:
 
 ```wl
+In[34]:=
 (* ARMA Model Diagnostics *)
 	residuals = Normal[tsmARMA["FitResiduals"]["Values"]];
 	
@@ -174,6 +180,7 @@ We verify the model fit using residual diagnostics:
 Using the fitted ARMA model, we generate multi-step return forecasts and reconstruct the price trajectory:
 
 ```wl
+In[38]:=
 (* Multi-step forward forecasting of returns *)
 	forecastReturns = Normal[TimeSeriesForecast[tsmARMA, {horizon}]["Values"]];
 	
@@ -193,6 +200,7 @@ Using the fitted ARMA model, we generate multi-step return forecasts and reconst
 We implement a 2D Local Linear Trend Kalman Filter in Wolfram Language. The state vector x*t = [mu*t, beta\_t]^T represents the true unobserved price trend level and its dynamic velocity (slope in \$/day). The filter performs recursive Bayesian prediction and measurement updates, eliminating the phase lag inherent in standard moving averages.
 
 ```wl
+In[43]:=
 (* Pure Wolfram Language Implementation of Local Linear Trend Kalman Filter *)
 	kalmanTrendFilter[data_List, qLevel_ ? NumericQ, qSlope_ ? NumericQ, rNoise_ ? NumericQ] := 
 	 Module[{n = Length[data], mu, beta, p11, p12, p22, k1, k2, y, v, f, 
@@ -245,6 +253,7 @@ We implement a 2D Local Linear Trend Kalman Filter in Wolfram Language. The stat
 We now run the filter on the in-sample stock prices:
 
 ```wl
+In[44]:=
 (* Filter in-sample training prices with Local Linear Trend Kalman Filter *)
 	(* Parameters: qLevel = 1.0, qSlope = 0.05, rNoise = 5.0 *)
 	kfResults = kalmanTrendFilter[trainPrices, 1.0, 0.05, 5.0];
@@ -261,6 +270,7 @@ We now run the filter on the in-sample stock prices:
 To demonstrate the zero-lag characteristic of the Kalman filter, we compare it against a standard 20-day Simple Moving Average (SMA):
 
 ```wl
+In[51]:=
 (* Calculate standard 20-day Simple Moving Average (SMA) for benchmark *)
 	sma20 = MovingAverage[trainPrices, 20];
 	
@@ -292,6 +302,7 @@ To demonstrate the zero-lag characteristic of the Kalman filter, we compare it a
 We now extrapolate the Kalman trend forward into the test period:
 
 ```wl
+In[55]:=
 (* Forward price path extrapolation from terminal Kalman state *)
 	mu0 = finalState[[1]];
 	beta0 = finalState[[2]];
@@ -309,6 +320,7 @@ We now extrapolate the Kalman trend forward into the test period:
 We compare the ARMA and Kalman Filter forecasts against the actual realized out-of-sample stock prices over the 20-day test horizon. We also include the Naive Random Walk Benchmark (where future expected price equals the last observed price P\_T).
 
 ```wl
+In[60]:=
 (* Compute realized metrics and benchmark *)
 	actualAvgPrice = Mean[testPrices];
 	naiveAvgPrice = pLast;
@@ -335,6 +347,7 @@ We compare the ARMA and Kalman Filter forecasts against the actual realized out-
 We format and display the comparison table:
 
 ```wl
+In[74]:=
 (* Display Performance Comparison Table *)
 	Grid[{
 	  {"Metric", "Actual Realized", "ARMA Model", "Kalman Trend Filter", "Naive (Random Walk)"}, 
@@ -369,6 +382,7 @@ We format and display the comparison table:
 We visualize the forecast paths alongside actual realized prices and dashed mean lines:
 
 ```wl
+In[75]:=
 (* Visualization of Out-of-Sample Forecasts vs. Actual Price Trajectory *)
 	recentLookback = 40;
 	historySegment = trainPrices[[-recentLookback ;; -1]];
@@ -427,6 +441,7 @@ In each window:
 3. Errors relative to realized prices are systematically recorded.
 
 ```wl
+In[80]:=
 (* Walk-Forward Rolling Evaluation Engine *)
 	windowLookback = 250;
 	evalHorizon = 20;
@@ -482,6 +497,7 @@ In each window:
 We now compute aggregate statistics across all 16 evaluation windows:
 
 ```wl
+In[85]:=
 (* Aggregate Statistical Comparison across all 16 Windows *)
 	meanArmaMAPE = Mean[rollingResults[[All, "ARMA_MAPE"]]];
 	meanKalmanMAPE = Mean[rollingResults[[All, "Kalman_MAPE"]]];
@@ -522,6 +538,7 @@ We now compute aggregate statistics across all 16 evaluation windows:
 We visualize the window-by-window forecast error distribution using a grouped bar chart:
 
 ```wl
+In[97]:=
 (* Grouped Bar Chart of Prediction Error Percentage per Window *)
 	windowLabels = rollingResults[[All, "Window"]];
 	armaErrors = rollingResults[[All, "ARMA_MAPE"]];

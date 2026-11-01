@@ -8,6 +8,10 @@ Quiet[
     nbFile,
     requestedFormats,
     activeFormats = {"md", "vsnb"},
+    outputStyles = {"Output", "Message", "Print", "PrintTemporary", "Echo"},
+    isOutputCellQ,
+    cleanCellList,
+    cleanCell,
     stripOutputs,
     normalizeCodeCells,
     extractCode,
@@ -25,25 +29,52 @@ Quiet[
     generatedFiles = {}
   },
 
+    (* Predicate to identify output, message, print, echo, or generated cells *)
+    isOutputCellQ[Cell[_, style_String, opts___]] := 
+      MemberQ[outputStyles, style] ||
+      MemberQ[{opts}, (GeneratedCell -> True) | (GeneratedCell :> True) | Rule[GeneratedCell, True] | RuleDelayed[GeneratedCell, True]];
+
+    isOutputCellQ[Cell[_, style_List, opts___]] :=
+      AnyTrue[style, MemberQ[outputStyles, #] &] ||
+      MemberQ[{opts}, (GeneratedCell -> True) | (GeneratedCell :> True) | Rule[GeneratedCell, True] | RuleDelayed[GeneratedCell, True]];
+
+    isOutputCellQ[Cell[_, opts___]] := 
+      MemberQ[{opts}, (GeneratedCell -> True) | (GeneratedCell :> True) | Rule[GeneratedCell, True] | RuleDelayed[GeneratedCell, True]];
+
+    isOutputCellQ[_] := False;
+
+    (* Helper to clean lists of cells recursively *)
+    cleanCellList[cells_List] := DeleteCases[cleanCell /@ cells, Nothing];
+
+    cleanCell[cell_ ? isOutputCellQ] := Nothing;
+
+    cleanCell[Cell[CellGroupData[inner_List, state___], opts___]] := 
+      Module[{cleanedInner = cleanCellList[inner], cleanedOpts = DeleteCases[{opts}, (CellLabel -> _) | (CellLabel :> _)]},
+        Switch[Length[cleanedInner],
+          0, Nothing,
+          1, First[cleanedInner],
+          _, Cell[CellGroupData[cleanedInner, state], Sequence @@ cleanedOpts]
+        ]
+      ];
+
+    cleanCell[CellGroupData[inner_List, state___]] := 
+      Module[{cleanedInner = cleanCellList[inner]},
+        Switch[Length[cleanedInner],
+          0, Nothing,
+          1, First[cleanedInner],
+          _, CellGroupData[cleanedInner, state]
+        ]
+      ];
+
+    cleanCell[Cell[content_, style_, opts___]] := 
+      Cell[content, style, Sequence @@ DeleteCases[{opts}, (CellLabel -> _) | (CellLabel :> _)]];
+
+    cleanCell[c_] := c;
+
     (* Function to discard output, message, print, and echo cells *)
-    stripOutputs[nb_Notebook] := 
-      nb //. {
-        Cell[CellGroupData[cells_List, state___], opts___] :> 
-          With[{filtered = DeleteCases[cells, Cell[_, "Output" | "Message" | "Print" | "Echo", ___]]},
-            If[Length[filtered] == 1,
-              First[filtered],
-              Cell[CellGroupData[filtered, state], opts]
-            ]
-          ],
-        CellGroupData[cells_List, state___] :> 
-          With[{filtered = DeleteCases[cells, Cell[_, "Output" | "Message" | "Print" | "Echo", ___]]},
-            If[Length[filtered] == 1,
-              First[filtered],
-              CellGroupData[filtered, state]
-            ]
-          ],
-        Cell[_, "Output" | "Message" | "Print" | "Echo", ___] :> Sequence[]
-      };
+    stripOutputs[Notebook[cells_List, opts___]] := Notebook[cleanCellList[cells], opts];
+    stripOutputs[cells_List] := cleanCellList[cells];
+    stripOutputs[other_] := other;
 
     (* Locate the vendored mathematica2jupyter package (used for code-cell text extraction) *)
     scriptDir = If[StringQ[$InputFileName] && $InputFileName =!= "",
