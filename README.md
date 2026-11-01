@@ -17,7 +17,7 @@ A collection of git utilities for working with Wolfram Language notebooks (`.nb`
    - Inspects all staged `.nb` files and generates companion formats:
      - `.md` — Markdown for viewing/diffing in Git web UIs and terminals (rendered via kernel-level [`ResourceFunction["ExportMarkdownString"]`](https://resources.wolframcloud.com/FunctionRepository/resources/ExportMarkdownString/), the same engine powering the `WolframAgentTools` MCP server, running purely in the kernel without requiring a GUI FrontEnd).
      - `.vsnb` — VS Code notebooks for use with the [official Wolfram Language extension](https://marketplace.visualstudio.com/items?itemName=WolframResearch.wolfram) (with comments and statement structures cleanly preserved).
-     - `.org` — Org mode files for use with sci-wolfram (generated from `.md` via `pandoc`, with the sci-wolfram prologue block prepended).
+     - `.org` — Org mode files for use with sci-wolfram (generated from `.md` via `pandoc`, with the sci-wolfram prologue block prepended and code blocks normalized to `#+begin_src wolfram`).
    - **Automatic license check**: Checks license availability via `wolframscript -code '1+1'`. If licenses are exhausted (e.g. by a background LSP server), it automatically triggers `wolfram-git-kill-lsp.sh` to free a license before proceeding.
    - **Discards output cells** (`Output`, `Message`, `Print`, `Echo`) prior to conversion so that only source content and documentation are rendered.
    - **Zero external image folders**: Images in text/input cells are embedded inline as data URIs (`data:image/png;base64,...`) via `GeneratedAssetLocation -> None`, keeping git repositories free of detached asset directories.
@@ -134,6 +134,7 @@ This runs a full end-to-end integration test in an isolated sandbox repository:
 - Validates output cell removal via `wolfram-git-export-formats.wls` for both Markdown and VSNB, including a `.vsnb` → `Notebook` round-trip check.
 - Validates installer and automated companion generation/staging via `wolfram-git-pre-commit`.
 - Validates companion removal on notebook deletion.
+- Validates that generated Org source blocks use the sci-wolfram `wolfram` language rather than `wl`.
 - Validates configurable output formats via `wolfram.exportFormats`, including the Markdown-as-intermediate case for Org-only output.
 
 ---

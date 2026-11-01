@@ -25,7 +25,7 @@ org_file="${md_file%.md}.org"
     '#+end_src' \
     ''
   pandoc -f markdown-auto_identifiers -t org "$md_file"
-} > "$org_file"
+} | sed 's/^#+begin_src wl$/#+begin_src wolfram/' > "$org_file"
 
 # Post-process with Emacs/Elisp to strip any In[xx]:= prefixes in source blocks
 if command -v emacs >/dev/null 2>&1; then

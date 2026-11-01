@@ -170,6 +170,14 @@ if grep -q "In\[1\]:=" "notebook1.org"; then
   echo "FAIL: In[1]:= label was not stripped in notebook1.org!"
   exit 1
 fi
+if grep -q '#+begin_src wl' "notebook1.org"; then
+  echo "FAIL: Org source blocks should use 'wolfram' language, not 'wl'!"
+  exit 1
+fi
+if ! grep -q 'Sqrt\[16\]' "notebook1.org"; then
+  echo "FAIL: Input cell content missing in notebook1.org!"
+  exit 1
+fi
 COMMITTED_FILES=$(git log -1 --name-only --pretty="")
 if ! echo "$COMMITTED_FILES" | grep -q "notebook1.md"; then
   echo "FAIL: notebook1.md was not included in the git commit!"
