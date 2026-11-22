@@ -35,4 +35,5 @@ if ! grep -q "filter=wolfram-nb" "$GITATTRIBUTES" 2>/dev/null; then
   echo "*.nb filter=wolfram-nb" >> "$GITATTRIBUTES"
 fi
 
+echo To set export formats use git config wolfram.exportFormats "md vsnb org"
 echo "Done! Wolfram git utilities configured successfully."
